@@ -1,0 +1,78 @@
+= LDAP Authenticated
+
+Add ldap authentication capabilities to an application that uses the restful 
+authentication plugin.  It's been tested under MRI 1.8.6 and Jruby 1.1 under 
+Rails 2.0.2 on OSX, Linux, and Windows 2003 Server.
+
+== Basic Setup
+
+class User < ActiveRecord::Base
+	ldap_authenticated
+end
+
+The ldap_authenticated method adds functionality to the model to allow it to 
+authenticate using an LDAP directory.  In order to figure out important peices
+of information about how to authenticate, the model should provide methods
+which return the information needed.
+
+These methods are:
+ 
+ldap_account_bootstrapping     - when set to true users will be auto-created in your application.
+ldap_server                    - name or IP address of the LDAP server.
+ldap_port                      - TCP port number of the LDAP sever
+ldap_basedn                    - Base dn for searches (probably something like dc=company,dc=com)
+ldap_binddn                    - DN for user to bind as for user searches
+ldap_bindpw                    - password for searching authentication
+ldap_user_key                  - ldap attribute for users (probably uid or samaccountname)
+
+In addition to these methods, which should be provided by the User (or a config object -- read on), the
+following options to ldap_authenticated are supported:
+
+:config
+
+This is an insance of an object to use to retrieve config parameters.  By default, this is set to 
+'self'.  This means that the methods mentioned above are expected to be on the User class.  If you'd
+like to retrieve them from a configuration object or something you can set that using :config.
+
+:bootstrap_action
+
+This is a proc or a symbol (naming a method) to run to bootstrap a user.  The proc is passed
+an LDAP::Entry object, and a password.  Any action needed to boostrap a user should be performed
+in this code.
+
+:login_requires
+
+This is a proc or symbol (naming a method) to run to see if the user qualifies for logging in.
+If the code returs true, then the login is allowed.  If this returns false, it's not.  Note that
+this check is performed in addition to regular user password authentication.  Use this method to
+define extra policy (such as group membership) for a condition of loggin in.
+
+This code will be passed one parameter, which is the users' entry as returned from LDAP.
+
+For more information see LdapAuthenticated::ClassMethods::new_from_ldap.
+
+
+== Example
+
+class User < ActiveRecord::Base
+	has_many :role_members
+	has_many :roles, :through => role_members
+		
+	ldap_authenticated(
+		:login_requires => proc { |entry| entry.memberof.include? 'cn=somegroup,ou=groups,o=company.com' },
+		:bootstrap_action => :bootstrap_ldap_user,
+		:config => OpenStruct.new(
+			:ldap_account_bootstrapping => true,
+			:ldap_server                => 'dc1.company.com',
+		    :ldap_port                  =>  389,
+		    :ldap_basedn                => 'dc=company,dc=com',
+		    :ldap_binddn                => 'cn=finder, ou=Users, dc=company, dc=com',
+		    :ldap_bindpw:               => 'findersecret'
+		)
+	)
+
+	def self.bootstrap_ldap_user(entry,password)
+		...
+	end
+	
+end
